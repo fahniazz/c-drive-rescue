@@ -9,8 +9,11 @@ function Get-HibernateEnabled {
 function Show-TuneStatus {
   Write-Title 'Current settings'
   $s = Get-SystemFiles
+  $pend = Get-PendingRestart $s
   $h = if (Get-HibernateEnabled) { 'on' } else { 'off' }
-  Write-Host ('  Hibernation: {0} (hiberfil.sys {1})' -f $h, (Format-Size $s.Hiberfil))
+  $wait = if ($pend.Hiberfil) { ', removed at the next restart' } else { '' }
+  Write-Host ('  Hibernation: {0} (hiberfil.sys {1}{2})' -f $h, (Format-Size $s.Hiberfil), $wait)
+  if ($pend.PagefileBytes) { Write-Host ('  pagefile.sys on {0} is {1} now; it shrinks at the next restart.' -f $script:SysDrive, (Format-Size $s.Pagefile)) }
   $cs = Get-CimInstance Win32_ComputerSystem
   if ($cs.AutomaticManagedPagefile) { Write-Host ('  Pagefile: managed by Windows on {0} ({1})' -f $script:SysDrive, (Format-Size $s.Pagefile)) }
   else {

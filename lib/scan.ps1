@@ -13,6 +13,21 @@ function Get-SystemFiles {
   }
 }
 
+# Settings already changed (by cdr tune or by hand) that only take effect after a restart.
+function Get-PendingRestart($Files) {
+  $hib = ($Files.Hiberfil -gt 0) -and -not (Get-HibernateEnabled)
+  $pfBytes = [long]0
+  try {
+    $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+    if (-not $cs.AutomaticManagedPagefile -and $Files.Pagefile) {
+      $c = @(Get-CimInstance Win32_PageFileSetting -ErrorAction Stop | Where-Object { $_.Name -ieq ($script:SysDrive + '\pagefile.sys') })
+      if (-not $c.Count) { $pfBytes = $Files.Pagefile }
+      elseif ($c[0].MaximumSize -gt 0 -and $Files.Pagefile -gt ([long]$c[0].MaximumSize * 1MB)) { $pfBytes = $Files.Pagefile - [long]$c[0].MaximumSize * 1MB }
+    }
+  } catch { }
+  [pscustomobject]@{ Hiberfil = $hib; PagefileBytes = $pfBytes; Bytes = $(if ($hib) { $Files.Hiberfil } else { 0 }) + $pfBytes }
+}
+
 # Folders worth looking at: everything in the profile, and every app folder in AppData. Links are skipped.
 function Get-BigFolders([switch]$Deep, [long]$MinBytes = 300MB) {
   $profileDir = $env:USERPROFILE
@@ -53,9 +68,12 @@ function Invoke-Scan([switch]$Deep) {
 
   Write-Title 'Windows system files'
   $s = Get-SystemFiles
+  $pend = Get-PendingRestart $s
   $fmt = '  {0,-34} {1,9}  {2}'
-  Write-Host ($fmt -f 'hiberfil.sys (hibernation)', (Format-Size $s.Hiberfil), $(if ($s.Hiberfil) { 'cdr tune -Hibernate Off frees it (admin)' } else { 'off' }))
-  Write-Host ($fmt -f 'pagefile.sys (virtual memory)', (Format-Size $s.Pagefile), $(if ($s.Pagefile -gt 4GB -and $best) { ('cdr tune -PagefileTo {0} (admin) moves most of it' -f $best.Drive.TrimEnd(':')) } else { '' }))
+  $hibNote = if ($pend.Hiberfil) { 'hibernation is already off; the file goes at the next restart' } elseif ($s.Hiberfil) { 'cdr tune -Hibernate Off frees it (admin)' } else { 'off' }
+  $pfNote = if ($pend.PagefileBytes) { 'already set smaller; shrinks at the next restart' } elseif ($s.Pagefile -gt 4GB -and $best) { ('cdr tune -PagefileTo {0} (admin) moves most of it' -f $best.Drive.TrimEnd(':')) } else { '' }
+  Write-Host ($fmt -f 'hiberfil.sys (hibernation)', (Format-Size $s.Hiberfil), $hibNote)
+  Write-Host ($fmt -f 'pagefile.sys (virtual memory)', (Format-Size $s.Pagefile), $pfNote)
   if ($s.Swapfile) { Write-Host ($fmt -f 'swapfile.sys', (Format-Size $s.Swapfile), 'small, leave it') }
   if ($s.WindowsOld) { Write-Host ($fmt -f 'Windows.old (previous Windows)', (Format-Size $s.WindowsOld), 'remove with Disk Cleanup > Clean up system files > Previous Windows installation(s)') }
   Write-Host ($fmt -f 'WinSxS, Installer', '', 'never delete by hand; cdr tune -ComponentCleanup trims WinSxS safely') -ForegroundColor DarkGray
@@ -73,8 +91,9 @@ function Invoke-Scan([switch]$Deep) {
   Write-Title 'Suggestions'
   $tips = New-Object System.Collections.ArrayList
   if ($cacheBytes -ge 500MB) { [void]$tips.Add(('Run  cdr clean  to free about {0} of caches now.' -f (Format-Size $cacheBytes))) }
-  if ($s.Hiberfil -ge 1GB) { [void]$tips.Add(('Run  cdr tune -Hibernate Off  as admin to free {0} (you lose Hibernate and Fast Startup; Sleep still works).' -f (Format-Size $s.Hiberfil))) }
-  if ($s.Pagefile -ge 8GB -and $best) { [void]$tips.Add(('Run  cdr tune -PagefileTo {0}  as admin: keeps a small 2-4 GB pagefile on {1}, the rest moves (takes effect after restart).' -f $best.Drive.TrimEnd(':'), $script:SysDrive)) }
+  if ($pend.Bytes -ge 1GB) { [void]$tips.Add(('Restart Windows: about {0} comes back (hibernation/pagefile changes are waiting for it).' -f (Format-Size $pend.Bytes))) }
+  if ($s.Hiberfil -ge 1GB -and -not $pend.Hiberfil) { [void]$tips.Add(('Run  cdr tune -Hibernate Off  as admin to free {0} (you lose Hibernate and Fast Startup; Sleep still works).' -f (Format-Size $s.Hiberfil))) }
+  if ($s.Pagefile -ge 8GB -and $best -and -not $pend.PagefileBytes) { [void]$tips.Add(('Run  cdr tune -PagefileTo {0}  as admin: keeps a small 2-4 GB pagefile on {1}, the rest moves (takes effect after restart).' -f $best.Drive.TrimEnd(':'), $script:SysDrive)) }
   $movable = @($big | Where-Object { -not (Get-MoveBlocker $_.Path) -and $_.Bytes -ge 2GB })
   if ($movable.Count -and $best) {
     foreach ($m in ($movable | Select-Object -First 3)) {

@@ -111,6 +111,10 @@ pwsh -NoProfile -File tests\smoke.ps1
 The tests work on throwaway folders only. They cover links, age filtering, sizes, the target list, move
 guards, and a real move and undo through a second drive when one exists.
 
+The administrator paths change real Windows settings, so they are not in the smoke test. They were run by hand on
+Windows 11 (PowerShell 5.1): `clean -Admin` on the Windows caches, every `tune` option, the interactive `tune`, and
+the elevation prompt from a folder whose path has spaces.
+
 ## License
 
 MIT

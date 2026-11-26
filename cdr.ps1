@@ -36,7 +36,7 @@ param(
 $ErrorActionPreference = 'Continue'
 $script:Root = $PSScriptRoot
 $script:Entry = $PSCommandPath
-$script:Version = '0.1.0'
+$script:Version = '0.1.1'
 foreach ($f in 'core', 'clean', 'scan', 'move', 'tune', 'menu') { . (Join-Path $PSScriptRoot "lib\$f.ps1") }
 
 # -Only/-Skip also accept "a,b" as one string (that is what the elevated window receives)

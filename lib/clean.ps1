@@ -99,7 +99,7 @@ function Invoke-TargetClean($Row) {
       try {
         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
         foreach ($p in $Row.Paths) { [void](Clear-Folder $p) }
-      } finally { Start-Service -Name $svc -ErrorAction SilentlyContinue }
+      } finally { Start-Service -Name $svc -ErrorAction SilentlyContinue -WarningAction SilentlyContinue }
     }
     'DeliveryOptimization' {
       if (Get-Command Delete-DeliveryOptimizationCache -ErrorAction SilentlyContinue) { Delete-DeliveryOptimizationCache -Force -ErrorAction SilentlyContinue }
